@@ -1,0 +1,93 @@
+[server]
+host = "0.0.0.0"
+port = 8741
+log_level = "info"
+
+[vram]
+# "pynvml", "nvidia-smi", or "auto" (try pynvml first, fall back to nvidia-smi)
+backend = "auto"
+# VRAM in MB to keep free for the OS / desktop / other apps
+reserved_mb = 512
+device_index = 0
+
+[cache]
+max_loaded_models = 10
+
+# ---------------------------------------------------------------------------
+# Provider-level defaults
+# ---------------------------------------------------------------------------
+[providers.faster_whisper]
+enabled = true
+default_model = "large-v3"
+compute_type = "float16"
+
+[providers.glm_ocr]
+enabled = true
+default_model = "glm-edge-v2-ocr"
+
+[providers.llama_cpp]
+enabled = true
+n_gpu_layers = -1
+context_length = 4096
+
+# ---------------------------------------------------------------------------
+# Pre-configured model registry entries
+# ---------------------------------------------------------------------------
+[[models]]
+name = "whisper-large-v3"
+provider = "faster_whisper"
+vram_mb = 3072
+tags = ["stt", "whisper"]
+
+[models.params]
+model_size = "large-v3"
+compute_type = "float16"
+
+[[models]]
+name = "whisper-medium"
+provider = "faster_whisper"
+vram_mb = 2048
+tags = ["stt", "whisper"]
+
+[models.params]
+model_size = "medium"
+compute_type = "float16"
+
+[[models]]
+name = "whisper-small"
+provider = "faster_whisper"
+vram_mb = 1024
+tags = ["stt", "whisper"]
+
+[models.params]
+model_size = "small"
+compute_type = "float16"
+
+[[models]]
+name = "glm-edge-v2-ocr"
+provider = "glm_ocr"
+vram_mb = 4096
+tags = ["ocr", "vision"]
+
+[models.params]
+model_id = "THUDM/glm-edge-v2-9b"
+
+[[models]]
+name = "llama-3.2-3b-q4"
+provider = "llama_cpp"
+vram_mb = 2800
+tags = ["llm", "chat"]
+
+[models.params]
+repo_id = "bartowski/Llama-3.2-3B-Instruct-GGUF"
+filename = "*Q4_K_M.gguf"
+
+[[models]]
+name = "llama-3.2-1b-q4"
+provider = "llama_cpp"
+vram_mb = 1200
+tags = ["llm", "chat"]
+
+[models.params]
+repo_id = "bartowski/Llama-3.2-1B-Instruct-GGUF"
+filename = "*Q4_K_M.gguf"
