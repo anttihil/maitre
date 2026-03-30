@@ -23,7 +23,7 @@ compute_type = "float16"
 
 [providers.glm_ocr]
 enabled = true
-default_model = "glm-edge-v2-ocr"
+default_model = "glm-ocr"
 
 [providers.llama_cpp]
 enabled = true
@@ -64,13 +64,13 @@ model_size = "small"
 compute_type = "float16"
 
 [[models]]
-name = "glm-edge-v2-ocr"
+name = "glm-ocr"
 provider = "glm_ocr"
-vram_mb = 4096
-tags = ["ocr", "vision"]
+vram_mb = 2048
+tags = ["ocr", "document"]
 
 [models.params]
-model_id = "THUDM/glm-edge-v2-9b"
+layout_device = "cuda"
 
 [[models]]
 name = "llama-3.2-3b-q4"

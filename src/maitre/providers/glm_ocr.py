@@ -1,4 +1,4 @@
-"""GLM OCR provider -- vision/OCR using GLM-Edge-V2 or similar."""
+"""GLM OCR provider -- document OCR using zai-org/GLM-OCR (glmocr package)."""
 
 from __future__ import annotations
 
@@ -24,44 +24,37 @@ class GLMOCRProvider(BaseProvider):
 
     def is_installed(self) -> bool:
         try:
-            import transformers  # noqa: F401
-            from PIL import Image  # noqa: F401
+            import glmocr  # noqa: F401
 
             return True
         except ImportError:
             return False
 
     def install_instructions(self) -> str:
-        return "pip install transformers torch pillow accelerate"
+        return 'pip install "glmocr[selfhosted]"'
 
     async def load_model(self, spec: ModelSpec) -> Any:
-        import torch
-        from transformers import AutoModelForCausalLM, AutoTokenizer
+        from glmocr import GlmOcr
 
-        model_id = spec.params.get("model_id", "THUDM/glm-edge-v2-9b")
-        dtype = spec.params.get("dtype", "float16")
-        torch_dtype = getattr(torch, dtype, torch.float16)
+        layout_device = spec.params.get("layout_device", "cuda")
 
-        log.info("Loading GLM OCR model %s (dtype=%s)", model_id, dtype)
+        log.info("Loading GLM OCR (layout_device=%s)", layout_device)
 
         loop = asyncio.get_running_loop()
 
-        def _load() -> dict[str, Any]:
-            tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
-            model = AutoModelForCausalLM.from_pretrained(
-                model_id,
-                torch_dtype=torch_dtype,
-                device_map="auto",
-                trust_remote_code=True,
-            )
-            return {"model": model, "tokenizer": tokenizer, "model_id": model_id}
+        def _load() -> GlmOcr:
+            ocr = GlmOcr(layout_device=layout_device)
+            # Eagerly initialise so VRAM is allocated now, not on first request
+            ocr.__enter__()
+            return ocr
 
         return await loop.run_in_executor(None, _load)
 
     async def unload_model(self, handle: Any) -> None:
-        if isinstance(handle, dict):
-            handle.get("model", None)  # reference for deletion
-            handle.clear()
+        try:
+            handle.__exit__(None, None, None)
+        except Exception:
+            log.exception("Error during GlmOcr cleanup")
         del handle
         gc.collect()
         try:
@@ -73,45 +66,29 @@ class GLMOCRProvider(BaseProvider):
             pass
 
     async def infer(self, handle: Any, request: dict[str, Any]) -> dict[str, Any]:
-        """Run OCR on an image.
+        """Run OCR on one or more images.
 
-        Request: {"image_path": "/path/to/image.png", "prompt": "OCR this image"}
+        Request: {"image_path": "/path/to/image.png"}
+                 or {"image_paths": ["/path/a.png", "/path/b.png"]}
+                 or {"output_dir": "./results"}
         """
-        from PIL import Image
-
         image_path = request.get("image_path")
-        if not image_path:
-            raise ValueError("'image_path' is required")
+        image_paths = request.get("image_paths")
+        output_dir = request.get("output_dir")
 
-        prompt = request.get("prompt", "Please perform OCR on this image and return the text content.")
-        model = handle["model"]
-        tokenizer = handle["tokenizer"]
+        if not image_path and not image_paths:
+            raise ValueError("'image_path' or 'image_paths' is required")
+
+        target = image_paths if image_paths else image_path
 
         loop = asyncio.get_running_loop()
 
-        def _run() -> str:
-            image = Image.open(image_path).convert("RGB")
-            messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "image", "image": image},
-                        {"type": "text", "text": prompt},
-                    ],
-                }
-            ]
-            inputs = tokenizer.apply_chat_template(
-                messages, add_generation_prompt=True, return_dict=True, return_tensors="pt", tokenize=True
-            )
-            inputs = {k: v.to(model.device) for k, v in inputs.items()}
-            outputs = model.generate(
-                **inputs,
-                max_new_tokens=request.get("max_tokens", 2048),
-                do_sample=False,
-            )
-            # Decode only the generated part
-            generated = outputs[0][inputs["input_ids"].shape[1] :]
-            return tokenizer.decode(generated, skip_special_tokens=True)
+        def _run() -> dict[str, Any]:
+            result = handle.parse(target)
+            response: dict[str, Any] = {"json_result": result.json_result}
+            if output_dir:
+                result.save(output_dir=output_dir)
+                response["saved_to"] = output_dir
+            return response
 
-        text = await loop.run_in_executor(None, _run)
-        return {"text": text}
+        return await loop.run_in_executor(None, _run)
